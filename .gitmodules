@@ -1,0 +1,6 @@
+[submodule "zsh/zsh-z"]
+	path = zsh/zsh-z
+	url = https://github.com/agkozak/zsh-z.git
+[submodule "zsh/prezto"]
+	path = zsh/prezto
+	url = git@github.com:gwentgod/prezto.git
