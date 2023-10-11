@@ -1,0 +1,17 @@
+/*
+/*/
+!.gitignore
+!aria2/
+!fontconfig/
+!git/
+!kbct/
+!kde/
+!nvim/
+!pacman/
+!systemd/
+systemd/user/*/
+!tmux/
+!trojan/
+!zsh/
+zsh/rc.d/50*
+zsh/rc.d/99-local.zsh

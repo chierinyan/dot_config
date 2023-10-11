@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+import re
+import os, sys, glob, shutil
+from mutagen.flac import FLAC
+from mutagen.mp4 import MP4
+
+import tempfile, yaml
+from subprocess import call
+
+EDITOR = os.environ.get('EDITOR', 'vi')
+
+base = sys.argv[1]
+audios = []
+for file in sorted(glob.glob(glob.escape(base)+'/*.flac')):
+    if os.stat(file).st_nlink != 1:
+        shutil.copy(file, file+'.tmp')
+        os.replace(file+'.tmp', file)
+    audio = FLAC(file)
+    audios.append(audio)
+
+tracks = []
+album = {'album': [''], 'albumartist': [''], 'date': [''], 'tracks': tracks}
+if 'album' in audios[0]:
+    album['album'] = audios[0]['album']
+else:
+    album['album'] = [os.path.basename(base)]
+if 'albumartist' in audios[0]:
+    album['albumartist'] = audios[0]['albumartist']
+if 'date' in audios[0]:
+    album['date'][0] = audios[0]['date'][0][:10]
+
+
+dump = ['lyrics', 'album', 'albumartist', 'genre', 'copyright', 'description', 'comment', \
+        'comments', 'performer', 'mood', 'genrenumber', 'date', 'encoded_by', 'encoder', \
+        'originator_reference', 'time_reference']
+for i in range(len(audios)):
+    metadata = dict(audios[i])
+    keys = tuple(metadata.keys())
+
+    filename = os.path.splitext(os.path.basename(audios[i].filename))[0]
+    match = re.findall(r'^((\d+)-)?(\d+-)?(.*)', filename)[0]
+    disc, title = match[1], match[3]
+    if not disc:
+        disc = '1'
+    if 'title' not in keys:
+        metadata['title'] = [title]
+    # if 'tracknumber' not in keys:
+    metadata['tracknumber'] = [str(i+1)]
+    if 'discnumber' not in keys:
+        metadata['discnumber'] = [disc]
+    if 'artist' not in keys:
+        metadata['artist'] = ['']
+    for key in keys:
+        if key in dump or len(key) == 36:
+            del metadata[key]
+            continue
+        if key == 'artist':
+            metadata[key][0] = metadata[key][0].replace('&', '、')
+        metadata[key][0] = metadata[key][0].replace('：', ':')
+        metadata[key][0] = metadata[key][0].replace('（', '(')
+        metadata[key][0] = metadata[key][0].replace('）', ')')
+        metadata[key][0] = metadata[key][0].replace('/', '／')
+    tracks.append(metadata)
+
+with tempfile.NamedTemporaryFile(mode='w+', suffix='.yaml') as tf:
+    yaml.dump(dict(album), tf,
+              width=1024, allow_unicode=True, default_style="'", default_flow_style=False)
+    tf.flush()
+
+    call([EDITOR, tf.name])
+
+    tf.seek(0)
+    modified = yaml.safe_load(tf)
+    if not modified:
+        print("Nothing to do")
+        exit(0)
+    modified_tracks = modified['tracks']
+
+illegal_chars = ['/', ':', '*', '?', '"', '<', '>', '|']
+
+for i in range(len(audios)):
+    audios[i].delete()
+    audios[i].update(modified_tracks[i])
+    audios[i]['album'] = modified['album']
+    audios[i]['albumartist'] = modified['albumartist']
+    audios[i]['date'] = modified['date']
+    audios[i].save()
+    new_name = f'{audios[i]["discnumber"][0]}-{audios[i]["tracknumber"][0]:0>2} {modified_tracks[i]["title"][0]}.flac'
+    for char in illegal_chars:
+        new_name = new_name.replace(char, '_')
+    if new_name != audios[i].filename:
+        os.rename(audios[i].filename, base+'/'+new_name)
+
+new_base = f'{modified['albumartist'][0]} - {modified['album'][0]}'
+for char in illegal_chars:
+    new_base = new_base.replace(char, '_')
+if base != new_base:
+    os.rename(base, new_base)
